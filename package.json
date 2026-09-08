@@ -9,7 +9,11 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "playwright test",
     "test:report": "playwright show-report",
-    "apk": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
+    "preflight": "node scripts/preflight.mjs",
+    "sync": "npm run build && cap sync android",
+    "apk": "npm run preflight && npm run sync && cd android && ./gradlew assembleDebug",
+    "apk:release": "npm run preflight && npm run sync && cd android && ./gradlew assembleRelease",
+    "aab:release": "npm run preflight && npm run sync && cd android && ./gradlew bundleRelease",
     "android:open": "cap open android"
   },
   "dependencies": {
@@ -18,15 +22,18 @@
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.4.2",
     "@capacitor/status-bar": "^8.0.3",
-    "@vitejs/plugin-react": "latest",
     "firebase": "^12.16.0",
-    "lucide-react": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "vite": "latest"
+    "lucide-react": "^1.25.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.6.8",
-    "@playwright/test": "^1.61.1"
+    "@capacitor/cli": "^8.4.2",
+    "@playwright/test": "^1.61.1",
+    "@vitejs/plugin-react": "^6.0.3",
+    "vite": "^8.1.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }

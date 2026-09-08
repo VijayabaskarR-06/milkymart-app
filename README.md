@@ -18,7 +18,7 @@ The verified production output is also included in `dist/`.
 
 ## Run on localhost
 
-You need Node.js 18 or newer.
+You need Node.js 22 or newer (the Capacitor 8 CLI requires it).
 
 ```bash
 npm install
@@ -33,6 +33,23 @@ For a production build:
 npm run build
 npm run preview
 ```
+
+## Android builds
+
+`npm run preflight` checks the two things that silently break an Android build:
+Node must be 22+, and the JDK must be 17-21 (Android Gradle Plugin 8.7 rejects
+newer ones). Every APK/AAB script runs it first.
+
+```bash
+npm run apk          # debug APK
+npm run apk:release  # signed release APK
+npm run aab:release  # signed release bundle for Play
+```
+
+Release builds need `android/keystore.properties` (gitignored) pointing at the
+signing keystore; without it the build stops rather than emitting an unsigned
+artifact. `versionCode`/`versionName` come from the `version` in `package.json`
+(1.2.3 becomes versionCode 10203), so bump that to ship an update.
 
 ## Demo login
 

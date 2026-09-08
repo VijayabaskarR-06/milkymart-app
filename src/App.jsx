@@ -38,7 +38,7 @@ import {
   X,
 } from 'lucide-react'
 import { products as seedProducts, orderStages } from './data.js'
-import { api, getToken, setToken, ApiError, getApiBase, setApiBase, defaultApiBase } from './api.js'
+import { api, getToken, setToken, ApiError, getApiBase, setApiBase, defaultApiBase, canOverrideApiBase } from './api.js'
 import { canUseFirebasePhone, sendFirebaseOtp, confirmFirebaseOtp, firebaseSignOut } from './firebaseClient.js'
 
 // Turns Firebase/native error codes into a message that names the real cause, so
@@ -753,11 +753,19 @@ function Landing({ onSelect, setToast }) {
     setToast(value ? 'Server updated' : 'Reverted to default server')
   }
 
-  // Server settings are hidden from users; press-and-hold the logo (2s) to open
-  // them when troubleshooting a deployment.
+  // Server settings exist for troubleshooting a deployment: press-and-hold the
+  // logo (2s) to open them. Development builds only — see the note in api.js.
+  // In a release build canOverrideApiBase is false, so these are inert and the
+  // modal below is dropped from the bundle entirely.
   const holdTimer = useRef(null)
-  const startHold = () => { holdTimer.current = setTimeout(() => { setServerUrl(getApiBase()); setShowServer(true) }, 2000) }
+  const startHold = () => {
+    if (!canOverrideApiBase) return
+    holdTimer.current = setTimeout(() => { setServerUrl(getApiBase()); setShowServer(true) }, 2000)
+  }
   const cancelHold = () => { if (holdTimer.current) clearTimeout(holdTimer.current) }
+
+  // Release the pending timer if the screen unmounts mid-hold.
+  useEffect(() => () => { if (holdTimer.current) clearTimeout(holdTimer.current) }, [])
 
   return (
     <section className="auth-screen landing-screen">
@@ -792,7 +800,7 @@ function Landing({ onSelect, setToast }) {
           <ChevronRight size={20} />
         </button>
       </div>
-      {showServer && (
+      {canOverrideApiBase && showServer && (
         <Modal close={() => setShowServer(false)} title="Server settings">
           <label className="modal-label" htmlFor="server-url">Backend URL</label>
           <input
