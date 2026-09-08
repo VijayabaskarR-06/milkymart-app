@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 170" role="img" aria-label="One-time password verification">
+  <defs>
+    <linearGradient id="phone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3ec0ee"/>
+      <stop offset="1" stop-color="#0b7fb2"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2fc98a"/>
+      <stop offset="1" stop-color="#189d68"/>
+    </linearGradient>
+  </defs>
+
+  <!-- soft brand backdrop -->
+  <ellipse cx="150" cy="92" rx="118" ry="66" fill="#e2f5fc"/>
+  <circle cx="58" cy="40" r="9" fill="#c9ecfa"/>
+  <circle cx="245" cy="36" r="6" fill="#c9ecfa"/>
+  <circle cx="262" cy="120" r="4.5" fill="#c9ecfa"/>
+
+  <!-- phone -->
+  <rect x="112" y="24" width="76" height="128" rx="14" fill="url(#phone)"/>
+  <rect x="118" y="32" width="64" height="112" rx="9" fill="#ffffff"/>
+  <rect x="139" y="27" width="22" height="3.4" rx="1.7" fill="#ffffff" opacity=".85"/>
+
+  <!-- OTP field on screen -->
+  <rect x="126" y="52" width="48" height="15" rx="4" fill="#eef8fd"/>
+  <circle cx="136" cy="59.5" r="2.6" fill="#129fd8"/>
+  <circle cx="145" cy="59.5" r="2.6" fill="#129fd8"/>
+  <circle cx="154" cy="59.5" r="2.6" fill="#129fd8"/>
+  <circle cx="163" cy="59.5" r="2.6" fill="#cfe6f2"/>
+
+  <!-- content lines -->
+  <rect x="126" y="76" width="48" height="4" rx="2" fill="#e7eef3"/>
+  <rect x="126" y="85" width="34" height="4" rx="2" fill="#e7eef3"/>
+  <rect x="126" y="122" width="48" height="13" rx="6.5" fill="#129fd8"/>
+
+  <!-- verified shield -->
+  <path d="M150 94c-11-3.6-15-8.4-15-16.6V66l15-5 15 5v11.4C165 85.6 161 90.4 150 94z" fill="url(#shield)" transform="translate(0 4)"/>
+  <path d="M143.6 81.5l4.4 4.3 8.4-8.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 4)"/>
+
+  <!-- incoming SMS bubble -->
+  <g>
+    <rect x="196" y="58" width="70" height="34" rx="9" fill="#ffffff" stroke="#d9ecf6" stroke-width="1.6"/>
+    <path d="M200 88l-7 10 14-5z" fill="#ffffff"/>
+    <rect x="205" y="67" width="30" height="4.4" rx="2.2" fill="#129fd8"/>
+    <rect x="205" y="77" width="52" height="4.4" rx="2.2" fill="#e7eef3"/>
+  </g>
+
+  <!-- sparkles -->
+  <path d="M84 66l2.2 5.2L91.4 73l-5.2 2.2L84 80.4 81.8 75.2 76.6 73l5.2-1.8z" fill="#7fd4f2"/>
+  <path d="M231 118l1.5 3.6 3.6 1.5-3.6 1.5-1.5 3.6-1.5-3.6-3.6-1.5 3.6-1.5z" fill="#7fd4f2"/>
+</svg>

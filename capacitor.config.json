@@ -1,0 +1,11 @@
+{
+  "appId": "com.milkymart.clone",
+  "appName": "Milky Mart",
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["phone"]
+    }
+  }
+}

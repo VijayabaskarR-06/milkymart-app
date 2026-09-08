@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "304801210966",
+    "firebase_url": "https://milky-mart-default-rtdb.firebaseio.com",
+    "project_id": "milky-mart",
+    "storage_bucket": "milky-mart.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:304801210966:android:78c5a89f77b1cdeb86d1f7",
+        "android_client_info": {
+          "package_name": "com.example.service"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCs_RSAQNW_n049T7b-OxjiwhgQdDxP7D8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:304801210966:android:ec8489ef644f977086d1f7",
+        "android_client_info": {
+          "package_name": "com.milkymart.clone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCs_RSAQNW_n049T7b-OxjiwhgQdDxP7D8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:304801210966:android:d0714e46d923567e86d1f7",
+        "android_client_info": {
+          "package_name": "com.milkymart.upload"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCs_RSAQNW_n049T7b-OxjiwhgQdDxP7D8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
