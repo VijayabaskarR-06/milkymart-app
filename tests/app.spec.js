@@ -25,9 +25,11 @@ async function login(page, role = 'customer') {
   await page.reload()
   await page.waitForTimeout(1100)
   await page.getByText(role === 'rider' ? 'Delivery partner login' : 'Continue as customer').click()
-  if (role === 'rider') await page.locator('#phone').fill('9998887770')
+  // Nothing is pre-filled any more — both roles type their own number.
+  await page.locator('#phone').fill(role === 'rider' ? '9998887770' : '9876543210')
   await page.getByRole('button', { name: /Send OTP/ }).click()
   await page.waitForSelector('#otp')
+  await page.locator('#otp').fill('123456')
   await page.getByRole('button', { name: /Verify & continue/ }).click()
   await page.waitForSelector(role === 'rider' ? '.rider-status-card' : '.product-grid')
 }
@@ -67,16 +69,34 @@ test.describe('orders and wallet (persisted to Postgres)', () => {
     await expect(page.locator('.transaction-list article strong').first()).toContainText('Order #')
   })
 
-  test('a wallet top-up persists across a reload', async ({ page }) => {
+  test('a customer cannot top up their own wallet', async ({ page }) => {
+    // Customers hand cash to the delivery partner and an admin credits it —
+    // there is no self-serve top-up, in the UI or on the API.
     await login(page)
     await nav(page, WALLET).click()
     await page.getByRole('button', { name: /Add money/ }).click()
+    await expect(page.locator('.wallet-info-text')).toContainText('delivery partner')
+    await expect(page.getByRole('button', { name: /Continue securely/ })).toHaveCount(0)
+  })
+
+  test("a rider's wallet adjustment needs a reason and persists across a reload", async ({ page }) => {
+    await login(page, 'rider')
+    await nav(page, WALLET).click()
+    await page.getByRole('button', { name: /Add adjustment/ }).click()
+
+    // No reason yet — the adjustment is refused and the balance is untouched.
     await page.getByRole('button', { name: /Continue securely/ }).click()
-    await expect(page.locator('.wallet-card h1')).toHaveText('₹1,750')
+    await expect(page.locator('.toast.visible')).toContainText('reason')
+
+    await page.locator('.modal-input').fill('Cash collected from Ramesh, Flat 4B')
+    await page.getByRole('button', { name: /Continue securely/ }).click()
+    await expect(page.locator('.wallet-card h1')).toHaveText('₹1,340') // 840 + 500
+
     await page.reload()
     await page.waitForTimeout(1100)
     await nav(page, WALLET).click()
-    await expect(page.locator('.wallet-card h1')).toHaveText('₹1,750')
+    await expect(page.locator('.wallet-card h1')).toHaveText('₹1,340')
+    await expect(page.locator('.transaction-list article strong').first()).toContainText('Ramesh')
   })
 
   test('an order beyond the wallet balance falls back to cash on delivery', async ({ page }) => {
@@ -234,6 +254,7 @@ test.describe('rider', () => {
     await page.locator('#phone').fill('9000000123')
     await page.getByRole('button', { name: /Send OTP/ }).click()
     await page.waitForSelector('#otp')
+    await page.locator('#otp').fill('123456')
     await page.getByRole('button', { name: /Verify & continue/ }).click()
     await expect(page.locator('.rider-pending')).toBeVisible()
     await expect(page.locator('.rider-pending')).toContainText('Approval pending')
