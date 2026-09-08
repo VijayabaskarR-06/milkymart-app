@@ -1596,7 +1596,6 @@ function ProfileScreen({ onMenu, phone, logout, resetDemo, setToast, name, saveN
       <section className="profile-group">
         <h3>SUPPORT</h3>
         <ProfileRow icon={CircleHelp} label="Help & support" note="FAQs and contact details" onClick={() => setToast('Support is available 7 days a week')} />
-        <ProfileRow icon={Info} label="Terms & privacy" note="Read our service policies" onClick={() => setToast('Terms are included in the side menu')} />
       </section>
       <button className="reset-button" onClick={resetDemo}><RefreshCw size={17} /> Sync with server</button>
       <button className="logout-button" onClick={logout}><LogOut size={18} /> Logout</button>
@@ -1758,7 +1757,6 @@ function InfoScreen({ type, onBack }) {
       business: 'MILKYMART',
       address: 'Ward No-33, Pillor No-34, Purvi Indra Nagar, Patna Sadar, Patna, Bihar - 800020',
       tagline: 'MilkyMart – Pure Milk, Pure Happiness',
-      links: true,
     },
   }[type]
   return (
@@ -1799,11 +1797,6 @@ function InfoScreen({ type, onBack }) {
         </div>
       )}
       {type === 'learn' && <div className="steps-list">{['Browse fresh products', 'Choose delivery timing', 'Confirm and pay', 'Track your order'].map((step, index) => <div key={step}><span>{index + 1}</span><strong>{step}</strong></div>)}</div>}
-      {content.links && (
-        <div className="legal-links">
-          <a href={`${api.base}/legal/terms.html`} target="_blank" rel="noreferrer"><FileBadge size={17} /> Read the full Terms &amp; Conditions <ChevronRight size={16} /></a>
-        </div>
-      )}
       <div className="info-values"><div><ShieldCheck /><strong>Quality first</strong></div><div><Clock3 /><strong>On-time delivery</strong></div><div><UserRound /><strong>Customer care</strong></div></div>
     </div>
   )
