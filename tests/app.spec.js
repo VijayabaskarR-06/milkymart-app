@@ -13,11 +13,13 @@ test.beforeEach(async ({ request }) => {
   await request.post(`${API}/api/admin/reset`, { headers: { Authorization: `Bearer ${token}` } })
 })
 
-const nav = (page, i) => page.locator('.bottom-nav button').nth(i)
-const HOME = 0
-const ORDERS = 1
-const WALLET = 2
-const PROFILE = 3
+// Matched by label, not position: the rider and customer tabs differ, and a new
+// tab used to silently shift every index after it.
+const nav = (page, label) => page.locator('.bottom-nav button', { hasText: label })
+const HOME = 'Home'
+const ORDERS = 'Orders'
+const WALLET = 'Wallet'
+const PROFILE = 'Profile'
 
 async function login(page, role = 'customer') {
   await page.goto('/')

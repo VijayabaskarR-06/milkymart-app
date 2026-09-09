@@ -190,6 +190,14 @@ function App() {
   const [profileName, setProfileName] = useState('')
   const [riderApproved, setRiderApproved] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [subs, setSubs] = useState([])
+  // Rider cash screens: held here rather than in the screen so the shared
+  // refresh keeps them current — an approval decided in the admin panel has
+  // to reach the rider without them reopening the tab.
+  const [riderCustomers, setRiderCustomers] = useState([])
+  const [cashHistory, setCashHistory] = useState([])
+  // Which path the customer took out of the cart: a one-off order or a plan.
+  const [checkoutMode, setCheckoutMode] = useState('once')
   const [toast, setToast] = useState(null)
   // Firebase phone sign-in is used when the backend has it enabled AND we're in
   // the native app; otherwise the built-in OTP flow runs. `firebaseVerification`
@@ -254,23 +262,28 @@ function App() {
   const refreshCustomer = useCallback(async () => {
     const prof = await api.me()
     setProfileName(prof.user.name)
-    const [ords, wal, addr, notif] = await Promise.allSettled([
-      api.orders(), api.wallet(), api.addresses(), api.notifications(),
+    const [ords, wal, addr, notif, plans] = await Promise.allSettled([
+      api.orders(), api.wallet(), api.addresses(), api.notifications(), api.subscriptions(),
     ])
     if (ords.status === 'fulfilled') setOrders(ords.value)
     if (wal.status === 'fulfilled') { setBalance(wal.value.balance); setLedger(wal.value.transactions) }
     if (addr.status === 'fulfilled') setAddresses(addr.value)
     if (notif.status === 'fulfilled') setNotices(notif.value)
+    if (plans.status === 'fulfilled') setSubs(plans.value)
   }, [])
 
   const refreshRider = useCallback(async () => {
     const prof = await api.me()
     setProfileName(prof.user.name)
     setRiderApproved(prof.user.approved !== false)
-    const [dels, wal] = await Promise.allSettled([api.riderDeliveries(), api.wallet()])
+    const [dels, wal, custs, cash] = await Promise.allSettled([
+      api.riderDeliveries(), api.wallet(), api.riderCustomers(), api.riderCashCollections(),
+    ])
     if (dels.status === 'fulfilled') setDeliveries(dels.value)
     else setDeliveries([]) // pending riders get 403 — show no deliveries
     if (wal.status === 'fulfilled') { setBalance(wal.value.balance); setLedger(wal.value.transactions) }
+    if (custs.status === 'fulfilled') setRiderCustomers(custs.value)
+    if (cash.status === 'fulfilled') setCashHistory(cash.value)
   }, [])
 
   // Pulls the latest server state for whichever role is signed in.
@@ -282,16 +295,21 @@ function App() {
     })
   }, [refreshCustomer, refreshRider])
 
-  // Keep the app in step with the backend without a manual refresh: re-fetch when
-  // the app comes back to the foreground and on a light poll while it is visible.
-  // (Admin/rider changes made elsewhere then show up on their own.)
+  // Keeps customer, rider and admin in step without a manual refresh. A 45s poll
+  // was slow enough that an admin approving a payment, or a rider marking a
+  // delivery, looked like nothing had happened. Screens that show shared state
+  // poll every 6s while they are on top; everything else stays lazy so a phone
+  // in a pocket is not fetching all day. Polling stops entirely when the app is
+  // backgrounded and catches up on resume.
   useEffect(() => {
     if (!session) return undefined
+    const LIVE_PAGES = ['home', 'orders', 'order', 'wallet', 'notifications', 'deliveries', 'cash', 'subscriptions']
+    const interval = LIVE_PAGES.includes(page) ? 6000 : 30000
     const refreshIfVisible = () => {
       if (document.visibilityState === 'visible') refreshAll()
     }
     document.addEventListener('visibilitychange', refreshIfVisible)
-    const poll = setInterval(refreshIfVisible, 45000)
+    const poll = setInterval(refreshIfVisible, interval)
 
     let removeResume = () => {}
     ;(async () => {
@@ -311,12 +329,12 @@ function App() {
       clearInterval(poll)
       removeResume()
     }
-  }, [session, refreshAll])
+  }, [session, refreshAll, page])
 
   // Opening a data-backed screen always shows fresh data.
   useEffect(() => {
     if (!session) return
-    if (['home', 'orders', 'order', 'wallet', 'notifications', 'deliveries'].includes(page)) refreshAll()
+    if (['home', 'orders', 'order', 'wallet', 'notifications', 'deliveries', 'cash', 'subscriptions'].includes(page)) refreshAll()
   }, [page, session, refreshAll])
 
   // Tint the native status bar to match the current screen: blue with white
@@ -530,6 +548,7 @@ function App() {
     setDeliveries([])
     setNotices([])
     setLedger([])
+    setSubs([])
     setAddresses([])
     setBalance(0)
     setCart({})
@@ -561,6 +580,37 @@ function App() {
     } catch (error) {
       showToast(error.message)
     }
+  }
+
+  // Turns the cart into a daily plan. The server prices it and bills per
+  // delivery, so nothing is charged here.
+  const startSubscription = async ({ address, slot }) => {
+    if (!cartItems.length) {
+      showToast('Your cart is empty')
+      navigate('home')
+      return
+    }
+    try {
+      const plan = await api.subscribe({
+        items: cartItems.map((item) => ({ id: item.id, quantity: item.quantity })),
+        address,
+        slot,
+      })
+      setCart({})
+      await refreshCustomer()
+      navigate('subscriptions')
+      showToast(`Daily delivery started — ${money(plan.dailyTotal)} each morning`)
+    } catch (error) {
+      showToast(error.message)
+    }
+  }
+
+  const changeSubscription = async (id, action) => {
+    const updated = await api.setSubscription(id, action)
+    setSubs((current) => (action === 'cancel'
+      ? current.filter((entry) => entry.id !== id)
+      : current.map((entry) => (entry.id === id ? updated : entry))))
+    await refreshCustomer()
   }
 
   // Re-sync everything from the backend and clear the local cart.
@@ -696,6 +746,11 @@ function App() {
           deleteAddress={deleteAddress}
           selectedOrder={selectedOrder}
           setSelectedOrder={setSelectedOrder}
+          subs={subs}
+          startSubscription={startSubscription}
+          changeSubscription={changeSubscription}
+          checkoutMode={checkoutMode}
+          setCheckoutMode={setCheckoutMode}
         />
       ) : (
         <RiderApp
@@ -715,6 +770,9 @@ function App() {
           topupWallet={topupWallet}
           ledger={ledger}
           approved={riderApproved}
+          riderCustomers={riderCustomers}
+          cashHistory={cashHistory}
+          onCashRecorded={refreshAll}
         />
       )}
       <Toast message={toast?.message} />
@@ -917,6 +975,11 @@ function CustomerApp(props) {
     deleteAddress,
     selectedOrder,
     setSelectedOrder,
+    subs,
+    startSubscription,
+    changeSubscription,
+    checkoutMode,
+    setCheckoutMode,
   } = props
 
   const openProduct = (product) => {
@@ -993,6 +1056,7 @@ function CustomerApp(props) {
             saveName={saveName}
             addresses={addresses}
             onManageAddresses={() => navigate('addresses')}
+            onManageSubscriptions={() => navigate('subscriptions')}
           />
         )}
         {page === 'product' &&
@@ -1023,7 +1087,7 @@ function CustomerApp(props) {
             subtotal={cartSubtotal}
             updateCart={updateCart}
             onBack={() => navigate('home')}
-            onCheckout={() => navigate('checkout')}
+            onCheckout={(mode) => { setCheckoutMode(mode); navigate('checkout') }}
           />
         )}
         {page === 'checkout' && (
@@ -1034,6 +1098,8 @@ function CustomerApp(props) {
             addresses={addresses}
             onBack={() => navigate('cart')}
             onPlaceOrder={placeOrder}
+            onSubscribe={startSubscription}
+            mode={checkoutMode}
             onManageAddresses={() => navigate('addresses')}
           />
         )}
@@ -1042,6 +1108,15 @@ function CustomerApp(props) {
             notices={notices}
             onBack={() => navigate('home')}
             markAll={markAllRead}
+          />
+        )}
+        {page === 'subscriptions' && (
+          <SubscriptionsScreen
+            subs={subs}
+            onBack={() => navigate('profile')}
+            onChange={changeSubscription}
+            setToast={setToast}
+            onShop={() => navigate('home')}
           />
         )}
         {page === 'about' && <InfoScreen type="about" onBack={() => navigate('home')} />}
@@ -1280,9 +1355,15 @@ function CartScreen({ items, subtotal, updateCart, onBack, onCheckout }) {
             <div />
             <p className="bill-total"><span>To pay</span><strong>{money(subtotal)}</strong></p>
           </section>
-          <div className="bottom-action-bar">
-            <div><small>Total</small><strong>{money(subtotal)}</strong></div>
-            <button className="primary-button" onClick={onCheckout}>Continue <ChevronRight size={19} /></button>
+          <div className="cart-choices">
+            <button className="primary-button" onClick={() => onCheckout('once')}>
+              <span><strong>Continue with one-time purchase</strong><small>Deliver {money(subtotal)} of milk once</small></span>
+              <ChevronRight size={19} />
+            </button>
+            <button className="subscribe-button" onClick={() => onCheckout('subscribe')}>
+              <span><strong>Subscribe for monthly milk delivery</strong><small>{money(subtotal)} every morning, paid daily from your wallet</small></span>
+              <CalendarDays size={19} />
+            </button>
           </div>
         </>
       )}
@@ -1290,7 +1371,10 @@ function CartScreen({ items, subtotal, updateCart, onBack, onCheckout }) {
   )
 }
 
-function CheckoutScreen({ count, subtotal, balance, addresses, onBack, onPlaceOrder, onManageAddresses }) {
+function CheckoutScreen({ count, subtotal, balance, addresses, onBack, onPlaceOrder, onManageAddresses, mode = 'once', onSubscribe }) {
+  // 'subscribe' reuses this screen because a daily plan needs exactly the same
+  // decisions as a one-off order — where, and in which slot.
+  const subscribing = mode === 'subscribe'
   const today = new Date()
   const tomorrow = new Date(today)
   tomorrow.setDate(today.getDate() + 1)
@@ -1310,7 +1394,7 @@ function CheckoutScreen({ count, subtotal, balance, addresses, onBack, onPlaceOr
 
   return (
     <div className="screen checkout-screen">
-      <PageHeader title="Confirm your order" onBack={onBack} />
+      <PageHeader title={subscribing ? 'Start daily delivery' : 'Confirm your order'} onBack={onBack} />
       <div className="checkout-step">
         <span>1</span>
         <div><strong>Delivery address</strong><small>Where should we deliver?</small></div>
@@ -1338,9 +1422,18 @@ function CheckoutScreen({ count, subtotal, balance, addresses, onBack, onPlaceOr
           <button className={slot === value ? 'active' : ''} onClick={() => setSlot(value)} key={value}><Clock3 size={16} />{value}</button>
         ))}
       </div>
-      <div className="checkout-step"><span>3</span><div><strong>Payment method</strong><small>Automatically chosen for you</small></div></div>
+      <div className="checkout-step"><span>3</span><div><strong>Payment method</strong><small>{subscribing ? 'Charged daily, one delivery at a time' : 'Automatically chosen for you'}</small></div></div>
       <div className="payment-list">
-        {payByWallet ? (
+        {subscribing ? (
+          <div className="payment-auto active">
+            <span><WalletCards size={20} /></span>
+            <div>
+              <strong>Milky Mart Wallet</strong>
+              <small>{money(subtotal)} deducted each morning — wallet has {money(balance)}</small>
+            </div>
+            <i><Check size={13} /></i>
+          </div>
+        ) : payByWallet ? (
           <div className="payment-auto active">
             <span><WalletCards size={20} /></span>
             <div><strong>Milky Mart Wallet</strong><small>Balance {money(balance)} — enough for this order</small></div>
@@ -1354,22 +1447,106 @@ function CheckoutScreen({ count, subtotal, balance, addresses, onBack, onPlaceOr
           </div>
         )}
       </div>
-      <p className="payment-note"><Info size={14} /> {payByWallet ? 'Paid from your wallet balance.' : 'Pay cash on delivery. Add wallet balance via your delivery partner.'}</p>
-      <div className="checkout-summary"><span>{count} {count === 1 ? 'item' : 'items'}</span><strong>{money(subtotal)}</strong></div>
+      <p className="payment-note"><Info size={14} /> {subscribing
+        ? `Nothing is charged now. Each morning's delivery takes ${money(subtotal)} from your wallet, and deliveries pause automatically if the balance runs out.`
+        : payByWallet ? 'Paid from your wallet balance.' : 'Pay cash on delivery. Add wallet balance via your delivery partner.'}</p>
+      <div className="checkout-summary"><span>{count} {count === 1 ? 'item' : 'items'}{subscribing ? ' daily' : ''}</span><strong>{money(subtotal)}{subscribing ? ' / day' : ''}</strong></div>
       <button
         className="primary-button place-order-button"
         disabled={!count || !selected || placing}
         onClick={async () => {
           setPlacing(true)
           try {
-            await onPlaceOrder({ address: selected.detail, slot, date: formattedDate, idempotencyKey: idempotencyKey.current })
+            if (subscribing) await onSubscribe({ address: selected.detail, slot })
+            else await onPlaceOrder({ address: selected.detail, slot, date: formattedDate, idempotencyKey: idempotencyKey.current })
           } finally {
             setPlacing(false)
           }
         }}
       >
-        {placing ? 'Placing your order…' : `Place order • ${money(subtotal)}`} <CheckCircle2 size={19} />
+        {placing
+          ? (subscribing ? 'Starting your plan…' : 'Placing your order…')
+          : subscribing ? `Start daily delivery • ${money(subtotal)}/day` : `Place order • ${money(subtotal)}`} <CheckCircle2 size={19} />
       </button>
+    </div>
+  )
+}
+
+function SubscriptionsScreen({ subs, onBack, onChange, setToast, onShop }) {
+  const [busy, setBusy] = useState(null)
+
+  const act = async (id, action) => {
+    setBusy(id)
+    try {
+      await onChange(id, action)
+      setToast(action === 'pause' ? 'Daily delivery paused' : action === 'resume' ? 'Daily delivery resumed' : 'Daily delivery cancelled')
+    } catch (error) {
+      setToast(error.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="screen subs-screen">
+      <PageHeader title="Daily delivery" subtitle={subs.length ? `${subs.length} active plan` : ''} onBack={onBack} />
+      {!subs.length ? (
+        <EmptyState
+          image="/assets/images/Glass_milk.png"
+          title="No daily plan yet"
+          text="Add milk to your cart and choose “Subscribe for monthly milk delivery” to get it every morning."
+          button="Browse products"
+          onClick={onShop}
+        />
+      ) : (
+        subs.map((plan) => {
+          // 'insufficient' is not a failure the customer has to fix by hand — the
+          // plan restarts on its own once the wallet is funded, so the copy says
+          // what to do rather than showing an error.
+          const paused = plan.status === 'paused'
+          const short = plan.status === 'insufficient'
+          return (
+            <section className="sub-card" key={plan.id}>
+              <div className="sub-head">
+                <div>
+                  <span className={`sub-pill ${short ? 'sub-pill-warn' : paused ? 'sub-pill-idle' : 'sub-pill-live'}`}>
+                    {short ? 'Needs balance' : paused ? 'Paused' : 'Active'}
+                  </span>
+                  <h2>{money(plan.dailyTotal)} <small>per day</small></h2>
+                </div>
+                <img src="/assets/images/milkman.png" alt="" />
+              </div>
+              <ul className="sub-items">
+                {plan.items.map((item) => <li key={item}><Check size={14} /> {item}</li>)}
+              </ul>
+              <div className="sub-meta">
+                <p><Clock3 size={15} />{plan.slot}</p>
+                <p><MapPin size={15} />{plan.address}</p>
+              </div>
+              {short && (
+                <p className="sub-warning">
+                  <Info size={14} /> Your wallet cannot cover tomorrow’s {money(plan.dailyTotal)}. Hand cash to your
+                  delivery partner — deliveries resume automatically once it is added.
+                </p>
+              )}
+              <div className="sub-actions">
+                {paused ? (
+                  <button className="primary-button" disabled={busy === plan.id} onClick={() => act(plan.id, 'resume')}>
+                    Resume deliveries <RefreshCw size={17} />
+                  </button>
+                ) : (
+                  <button className="sub-pause" disabled={busy === plan.id} onClick={() => act(plan.id, 'pause')}>
+                    Pause deliveries
+                  </button>
+                )}
+                <button className="sub-cancel" disabled={busy === plan.id} onClick={() => act(plan.id, 'cancel')}>
+                  <Trash2 size={16} /> Cancel plan
+                </button>
+              </div>
+            </section>
+          )
+        })
+      )}
     </div>
   )
 }
@@ -1403,6 +1580,10 @@ function OrderTrackingScreen({ order, onBack }) {
   const stageIndex = order.status === 'Delivered' ? orderStages.length - 1 : orderStages.indexOf(order.status)
   const reached = stageIndex < 0 ? 0 : stageIndex
   const items = Array.isArray(order.items) ? order.items : []
+  // A wallet order is debited the moment it is placed. Cash on delivery is not
+  // paid until the rider collects it, so calling it "Total paid" while it is
+  // still on its way tells the customer they have settled a bill they have not.
+  const settled = order.payment === 'Wallet' || order.status === 'Delivered'
 
   return (
     <div className="screen tracking-screen">
@@ -1430,7 +1611,8 @@ function OrderTrackingScreen({ order, onBack }) {
         <h3>Order summary</h3>
         {items.map((item) => <p key={item}><span>{item}</span></p>)}
         <div />
-        <p className="bill-total"><span>Total paid</span><strong>{money(order.total)}</strong></p>
+        <p className="bill-total"><span>{settled ? 'Total paid' : 'To be paid'}</span><strong>{money(order.total)}</strong></p>
+        {!settled && <p className="bill-note"><Info size={13} /> Pay {money(order.total)} in cash when your order arrives.</p>}
       </section>
       <div className="order-meta tracking-meta">
         <p><Clock3 size={15} />{order.time}</p>
@@ -1536,7 +1718,7 @@ function WalletScreen({ onMenu, setToast, balance, topupWallet, ledger, rider = 
   )
 }
 
-function ProfileScreen({ onMenu, phone, logout, resetDemo, setToast, name, saveName, onManageAddresses, addresses = [], rider = false, approved = true }) {
+function ProfileScreen({ onMenu, phone, logout, resetDemo, setToast, name, saveName, onManageAddresses, onManageSubscriptions, addresses = [], rider = false, approved = true }) {
   const [editing, setEditing] = useState(false)
   const [draftName, setDraftName] = useState(name)
   const [saving, setSaving] = useState(false)
@@ -1591,7 +1773,7 @@ function ProfileScreen({ onMenu, phone, logout, resetDemo, setToast, name, saveN
           onClick={rider ? () => setToast('You deliver across Bengaluru Central') : onManageAddresses}
         />
         {rider && <ProfileRow icon={FileBadge} label="KYC documents" note="Aadhaar and PAN verified" onClick={() => setToast('Documents are verified')} />}
-        {!rider && <ProfileRow icon={RefreshCw} label="Subscriptions" note="Manage recurring milk orders" onClick={() => setToast('No active subscription')} />}
+        {!rider && <ProfileRow icon={RefreshCw} label="Daily delivery" note="Pause, resume or cancel your milk plan" onClick={onManageSubscriptions} />}
       </section>
       <section className="profile-group">
         <h3>SUPPORT</h3>
@@ -1802,8 +1984,107 @@ function InfoScreen({ type, onBack }) {
   )
 }
 
-function RiderApp({ page, navigate, drawerOpen, setDrawerOpen, deliveries, advanceDelivery, logout, resetDemo, setToast, phone, name, saveName, balance, topupWallet, ledger, approved }) {
-  const primaryPages = ['home', 'deliveries', 'wallet', 'profile']
+function RiderCashScreen({ onMenu, setToast, customers = [], history = [], onRecorded }) {
+  const [picked, setPicked] = useState(null)
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    const value = Number(amount)
+    if (!Number.isFinite(value) || value <= 0) { setToast('Enter the amount you collected'); return }
+    if (value > MAX_TOPUP) { setToast(`Maximum is ${money(MAX_TOPUP)} per collection`); return }
+    setSaving(true)
+    try {
+      // A fresh key per submission: a double-tap collapses into one claim
+      // rather than crediting the customer twice.
+      await api.recordCash({
+        customerId: picked.id,
+        amount: value,
+        note: note.trim() || undefined,
+        idempotencyKey: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `cash-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+      })
+      setPicked(null); setAmount(''); setNote('')
+      setToast('Sent to admin for approval')
+      onRecorded?.()
+    } catch (error) {
+      setToast(error.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="screen cash-screen">
+      <AppHeader onMenu={onMenu} title="Cash collected" subtitle="Record money taken at the door" />
+      <p className="cash-intro">
+        <Info size={15} /> Recording a payment does not add it to the customer’s wallet. An admin checks it first,
+        and the balance updates the moment it is approved.
+      </p>
+
+      <div className="section-heading"><div><span>YOUR CUSTOMERS</span><h2>Record a payment</h2></div></div>
+      {!customers.length ? (
+        <EmptyState image="/assets/images/coustmer1.png" title="No customers yet" text="Customers assigned to you will appear here." />
+      ) : (
+        <div className="cash-customers">
+          {customers.map((customer) => (
+            <button key={customer.id} className="cash-customer" onClick={() => { setPicked(customer); setAmount(''); setNote('') }}>
+              <span className="cash-avatar">{(customer.name || '?').slice(0, 1).toUpperCase()}</span>
+              <div>
+                <strong>{customer.name}</strong>
+                <small>{customer.phone} • wallet {money(customer.wallet)}</small>
+              </div>
+              <ChevronRight size={18} />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <>
+          <div className="section-heading"><div><span>SUBMITTED</span><h2>Your recent entries</h2></div></div>
+          <div className="cash-history">
+            {history.map((entry) => (
+              <article key={entry.id} className={`cash-entry cash-${entry.status}`}>
+                <div>
+                  <strong>{entry.customer}</strong>
+                  <small>{new Date(entry.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}</small>
+                  {entry.note && <small className="cash-note">{entry.note}</small>}
+                </div>
+                <div className="cash-right">
+                  <b>{money(entry.amount)}</b>
+                  <span>{entry.status === 'pending' ? 'Awaiting approval' : entry.status === 'approved' ? 'Approved' : 'Rejected'}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+
+      {picked && (
+        <Modal close={() => setPicked(null)} title={`Cash from ${picked.name}`}>
+          <label className="modal-label">Amount collected</label>
+          <div className="money-input">
+            <span>₹</span>
+            <input inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value.replace(/\D/g, ''))} autoFocus />
+          </div>
+          <div className="quick-amounts">{[200, 500, 1000].map((value) => (
+            <button key={value} onClick={() => setAmount(String(value))}>+ {money(value)}</button>
+          ))}</div>
+          <label className="modal-label">Note (optional)</label>
+          <input className="modal-input" placeholder="e.g. Cash taken at the door, Flat 4B" value={note} maxLength={140} onChange={(event) => setNote(event.target.value)} />
+          <p className="payment-note"><Info size={14} /> Sent to admin for approval. {picked.name}’s wallet updates only after it is approved.</p>
+          <button className="primary-button" onClick={submit} disabled={saving}>
+            {saving ? 'Sending…' : 'Send for approval'} <ChevronRight size={19} />
+          </button>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+function RiderApp({ page, navigate, drawerOpen, setDrawerOpen, deliveries, advanceDelivery, logout, resetDemo, setToast, phone, name, saveName, balance, topupWallet, ledger, approved, riderCustomers, cashHistory, onCashRecorded }) {
+  const primaryPages = ['home', 'deliveries', 'cash', 'wallet', 'profile']
 
   const onAdvance = async (id) => {
     const delivery = deliveries.find((entry) => entry.id === id)
@@ -1829,6 +2110,9 @@ function RiderApp({ page, navigate, drawerOpen, setDrawerOpen, deliveries, advan
         {page === 'deliveries' && (approved
           ? <RiderDeliveries deliveries={deliveries} onMenu={() => setDrawerOpen(true)} advanceDelivery={onAdvance} setToast={setToast} />
           : <RiderPending onMenu={() => setDrawerOpen(true)} name={name} />)}
+        {page === 'cash' && (approved
+          ? <RiderCashScreen onMenu={() => setDrawerOpen(true)} setToast={setToast} customers={riderCustomers} history={cashHistory} onRecorded={onCashRecorded} />
+          : <RiderPending onMenu={() => setDrawerOpen(true)} name={name} />)}
         {page === 'wallet' && <WalletScreen onMenu={() => setDrawerOpen(true)} setToast={setToast} balance={balance} topupWallet={topupWallet} ledger={ledger} rider />}
         {page === 'profile' && <ProfileScreen onMenu={() => setDrawerOpen(true)} phone={phone} logout={logout} resetDemo={resetDemo} setToast={setToast} name={name} saveName={saveName} approved={approved} rider />}
         {page === 'about' && <InfoScreen type="about" onBack={() => navigate('home')} />}
@@ -1837,6 +2121,7 @@ function RiderApp({ page, navigate, drawerOpen, setDrawerOpen, deliveries, advan
       {primaryPages.includes(page) && <BottomNav current={page} onChange={navigate} items={[
         { id: 'home', label: 'Home', icon: Home },
         { id: 'deliveries', label: 'Orders', icon: PackageCheck },
+        { id: 'cash', label: 'Cash', icon: CreditCard },
         { id: 'wallet', label: 'Wallet', icon: WalletCards },
         { id: 'profile', label: 'Profile', icon: UserRound },
       ]} />}
@@ -1970,7 +2255,7 @@ function SideDrawer({ open, close, navigate, logout, role, name }) {
 }
 
 function PageHeader({ title, subtitle, onBack, action }) {
-  return <header className="page-header"><button className="round-icon" onClick={onBack}><ArrowLeft size={21} /></button><div><strong>{title}</strong>{subtitle && <small>{subtitle}</small>}</div>{action || <span />}</header>
+  return <header className="page-header"><button className="round-icon" onClick={onBack} aria-label="Go back"><ArrowLeft size={21} /></button><div><strong>{title}</strong>{subtitle && <small>{subtitle}</small>}</div>{action || <span />}</header>
 }
 
 function EmptyState({ image, title, text, button, onClick }) {

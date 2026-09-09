@@ -620,3 +620,62 @@ img { max-width: 100%; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
+
+/* Cash-on-delivery reminder under an unsettled order total. */
+.bill-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--muted); font-size: 10px; font-weight: 700; }
+.bill-note svg { flex: none; color: var(--primary-dark); }
+
+/* --- Cart: one-time purchase vs daily plan --- */
+.cart-choices { display: grid; gap: 10px; margin-top: 18px; }
+.cart-choices button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; }
+.cart-choices span { display: grid; gap: 2px; }
+.cart-choices strong { font-size: 12px; font-weight: 800; }
+.cart-choices small { font-size: 10px; font-weight: 600; opacity: .82; }
+.subscribe-button { padding: 14px 16px; border: 1.5px solid var(--primary); border-radius: 14px; background: var(--primary-soft); color: var(--primary-dark); cursor: pointer; }
+.subscribe-button:active { transform: scale(.99); }
+
+/* --- Daily delivery plans --- */
+.sub-card { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.sub-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.sub-head h2 { margin: 8px 0 0; font-size: 24px; letter-spacing: -.5px; }
+.sub-head h2 small { font-size: 11px; font-weight: 700; color: var(--muted); }
+.sub-head img { width: 68px; flex: none; }
+.sub-pill { display: inline-block; padding: 4px 9px; border-radius: 20px; font-size: 9px; font-weight: 800; letter-spacing: .05em; }
+.sub-pill-live { background: #e7f7ee; color: #17794a; }
+.sub-pill-idle { background: var(--surface-2, #eef2f5); color: var(--muted); }
+.sub-pill-warn { background: #fdf0e3; color: #a35a10; }
+.sub-items { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; }
+.sub-items li { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: var(--ink); }
+.sub-items svg { color: var(--primary-dark); flex: none; }
+.sub-meta { display: grid; gap: 6px; margin-top: 14px; padding-top: 13px; border-top: 1px dashed var(--line); }
+.sub-meta p { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--muted); font-size: 10px; font-weight: 700; }
+.sub-meta svg { flex: none; }
+.sub-warning { display: flex; gap: 8px; margin: 13px 0 0; padding: 11px 12px; border-radius: 11px; background: #fdf0e3; color: #8a4c0d; font-size: 10px; font-weight: 700; line-height: 1.65; }
+.sub-warning svg { flex: none; margin-top: 1px; }
+.sub-actions { display: grid; gap: 9px; margin-top: 15px; }
+.sub-pause, .sub-cancel { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 12px; border-radius: 12px; font-size: 11px; font-weight: 800; cursor: pointer; }
+.sub-pause { border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); }
+.sub-cancel { border: none; background: transparent; color: #c0392b; }
+.sub-actions button:disabled { opacity: .55; }
+
+/* --- Rider: cash collected at the door --- */
+.cash-intro { display: flex; gap: 9px; margin: 16px 0 4px; padding: 12px 13px; border-radius: 12px; background: var(--primary-soft); color: var(--primary-dark); font-size: 10px; font-weight: 700; line-height: 1.7; }
+.cash-intro svg { flex: none; margin-top: 1px; }
+.cash-empty { color: var(--muted); font-size: 11px; font-weight: 700; }
+.cash-customers { display: grid; gap: 9px; }
+.cash-customer { display: grid; grid-template-columns: 40px 1fr 18px; align-items: center; gap: 12px; width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); text-align: left; cursor: pointer; }
+.cash-customer:active { transform: scale(.99); }
+.cash-customer strong { display: block; font-size: 12px; font-weight: 800; }
+.cash-customer small { color: var(--muted); font-size: 10px; font-weight: 600; }
+.cash-avatar { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-dark); font-size: 15px; font-weight: 800; }
+.cash-history { display: grid; gap: 9px; }
+.cash-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 13px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 12px; background: var(--surface); }
+.cash-entry strong { display: block; font-size: 12px; font-weight: 800; }
+.cash-entry small { display: block; color: var(--muted); font-size: 10px; font-weight: 600; }
+.cash-entry .cash-note { font-style: italic; }
+.cash-right { text-align: right; flex: none; }
+.cash-right b { display: block; font-size: 13px; font-weight: 800; }
+.cash-right span { font-size: 9px; font-weight: 800; color: var(--muted); }
+.cash-pending { border-left-color: #e0a244; }
+.cash-approved { border-left-color: #17794a; }
+.cash-rejected { border-left-color: #c0392b; }

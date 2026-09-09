@@ -141,4 +141,16 @@ export const api = {
 
   riderDeliveries: () => request('/rider/deliveries'),
   advanceDelivery: (id) => request(`/rider/deliveries/${id}`, { method: 'PATCH' }),
+
+  // Daily milk plans. Billed one delivery at a time from the wallet.
+  subscriptions: () => request('/subscriptions'),
+  subscribe: (payload) => request('/subscriptions', { method: 'POST', body: payload }),
+  // action: 'pause' | 'resume' | 'cancel'
+  setSubscription: (id, action) => request(`/subscriptions/${id}`, { method: 'PATCH', body: { action } }),
+
+  // Cash the rider took at the door. Recording it does not move any money —
+  // an admin has to approve it before the customer's wallet changes.
+  riderCustomers: () => request('/rider/customers'),
+  riderCashCollections: () => request('/rider/cash-collections'),
+  recordCash: (payload) => request('/rider/cash-collections', { method: 'POST', body: payload }),
 }
