@@ -17,12 +17,22 @@ export const canUseFirebasePhone = Capacitor.isNativePlatform()
  * Resolves with { verificationId } once the code is sent, or { autoIdToken }
  * when Android completes verification automatically (instant verification).
  */
+// Firebase can fail to answer at all — Play Integrity unable to attest on the
+// device, or the network dropping mid-handshake. The plugin then raises no
+// event, so without this the promise never settles and the button sits on
+// "Sending…" forever with nothing to tell the user.
+const SEND_TIMEOUT_MS = 60000
+
 export function sendFirebaseOtp(phoneE164, onAutoComplete) {
   return new Promise((resolve, reject) => {
     let settled = false
     let sentHandle
     let doneHandle
     let failHandle
+
+    const timeout = setTimeout(() => {
+      finish(reject, new Error('Firebase did not respond. Check your connection and try again.'))
+    }, SEND_TIMEOUT_MS)
 
     const removeAll = async () => {
       try { await sentHandle?.remove() } catch {}
@@ -32,6 +42,7 @@ export function sendFirebaseOtp(phoneE164, onAutoComplete) {
     const finish = (fn, arg, keepListening = false) => {
       if (settled) return
       settled = true
+      clearTimeout(timeout)
       if (keepListening) fn(arg)
       else removeAll().finally(() => fn(arg))
     }
