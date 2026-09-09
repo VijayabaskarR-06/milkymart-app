@@ -533,7 +533,16 @@ function App() {
         applySession(token, user)
       }
     } catch (error) {
-      showToast(useFirebaseLogin ? 'Incorrect or expired OTP. Please try again.' : error.message)
+      // Reporting every failure here as a wrong code once hid a real outage: the
+      // API was unreachable, and users were told their correct OTP was incorrect.
+      // Only claim the code is wrong when the code is actually what was rejected.
+      if (error instanceof ApiError) {
+        // The code was fine — Firebase accepted it and we got as far as our own
+        // server, which then refused or could not be reached.
+        showToast(error.status === 0 ? error.message : `Sign-in failed: ${error.message}`)
+      } else {
+        showToast(firebaseErrorMessage(error))
+      }
     }
   }
 
