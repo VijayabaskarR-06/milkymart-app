@@ -257,40 +257,66 @@ function App() {
     return () => { alive = false }
   }, [])
 
+  // What each screen actually displays. A full refresh (login, screen change,
+  // returning to the foreground) fetches everything; the 6s poll fetches only
+  // this, because re-reading the address book six times a minute is pure waste
+  // on a free-tier instance and buys the user nothing.
+  const LIVE_NEEDS = useMemo(() => ({
+    home: ['notifications'],                 // unread dot in the header
+    orders: ['orders'],
+    order: ['orders'],
+    wallet: ['wallet'],
+    notifications: ['notifications'],
+    subscriptions: ['subscriptions', 'wallet'],
+    cart: ['wallet'],
+    checkout: ['wallet', 'addresses'],
+    profile: ['addresses'],
+    deliveries: ['deliveries'],
+    cash: ['cash', 'riderCustomers'],
+  }), [])
+
   // me() runs first and is allowed to throw (a 401 there means the token is
   // stale); the rest settle independently so one slow call can't block the UI.
-  const refreshCustomer = useCallback(async () => {
+  const refreshCustomer = useCallback(async (only = null) => {
+    const wants = (key) => !only || only.includes(key)
     const prof = await api.me()
     setProfileName(prof.user.name)
-    const [ords, wal, addr, notif, plans] = await Promise.allSettled([
-      api.orders(), api.wallet(), api.addresses(), api.notifications(), api.subscriptions(),
-    ])
-    if (ords.status === 'fulfilled') setOrders(ords.value)
-    if (wal.status === 'fulfilled') { setBalance(wal.value.balance); setLedger(wal.value.transactions) }
-    if (addr.status === 'fulfilled') setAddresses(addr.value)
-    if (notif.status === 'fulfilled') setNotices(notif.value)
-    if (plans.status === 'fulfilled') setSubs(plans.value)
+    const jobs = [
+      ['orders', wants('orders') && api.orders, setOrders],
+      ['wallet', wants('wallet') && api.wallet, (v) => { setBalance(v.balance); setLedger(v.transactions) }],
+      ['addresses', wants('addresses') && api.addresses, setAddresses],
+      ['notifications', wants('notifications') && api.notifications, setNotices],
+      ['subscriptions', wants('subscriptions') && api.subscriptions, setSubs],
+    ].filter(([, fn]) => fn)
+    const settled = await Promise.allSettled(jobs.map(([, fn]) => fn()))
+    settled.forEach((result, i) => { if (result.status === 'fulfilled') jobs[i][2](result.value) })
   }, [])
 
-  const refreshRider = useCallback(async () => {
+  const refreshRider = useCallback(async (only = null) => {
+    const wants = (key) => !only || only.includes(key)
     const prof = await api.me()
     setProfileName(prof.user.name)
     setRiderApproved(prof.user.approved !== false)
-    const [dels, wal, custs, cash] = await Promise.allSettled([
-      api.riderDeliveries(), api.wallet(), api.riderCustomers(), api.riderCashCollections(),
-    ])
-    if (dels.status === 'fulfilled') setDeliveries(dels.value)
-    else setDeliveries([]) // pending riders get 403 — show no deliveries
-    if (wal.status === 'fulfilled') { setBalance(wal.value.balance); setLedger(wal.value.transactions) }
-    if (custs.status === 'fulfilled') setRiderCustomers(custs.value)
-    if (cash.status === 'fulfilled') setCashHistory(cash.value)
+    const jobs = [
+      // pending riders get 403 here — show no deliveries rather than stale ones
+      ['deliveries', wants('deliveries') && api.riderDeliveries, setDeliveries, () => setDeliveries([])],
+      ['wallet', wants('wallet') && api.wallet, (v) => { setBalance(v.balance); setLedger(v.transactions) }],
+      ['riderCustomers', wants('riderCustomers') && api.riderCustomers, setRiderCustomers],
+      ['cash', wants('cash') && api.riderCashCollections, setCashHistory],
+    ].filter(([, fn]) => fn)
+    const settled = await Promise.allSettled(jobs.map(([, fn]) => fn()))
+    settled.forEach((result, i) => {
+      if (result.status === 'fulfilled') jobs[i][2](result.value)
+      else jobs[i][3]?.()
+    })
   }, [])
 
   // Pulls the latest server state for whichever role is signed in.
-  const refreshAll = useCallback(() => {
+  // `only` limits it to the keys a screen needs; omit it for everything.
+  const refreshAll = useCallback((only = null) => {
     if (!sessionRef.current) return
     const load = sessionRef.current.role === 'rider' ? refreshRider : refreshCustomer
-    load().catch(() => {
+    load(only).catch(() => {
       // a failed background refresh keeps the last known data on screen
     })
   }, [refreshCustomer, refreshRider])
@@ -305,11 +331,13 @@ function App() {
     if (!session) return undefined
     const LIVE_PAGES = ['home', 'orders', 'order', 'wallet', 'notifications', 'deliveries', 'cash', 'subscriptions']
     const interval = LIVE_PAGES.includes(page) ? 6000 : 30000
-    const refreshIfVisible = () => {
-      if (document.visibilityState === 'visible') refreshAll()
-    }
-    document.addEventListener('visibilitychange', refreshIfVisible)
-    const poll = setInterval(refreshIfVisible, interval)
+    // Coming back to the foreground refreshes everything; the interval only
+    // refreshes what is on screen.
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshAll() }
+    document.addEventListener('visibilitychange', onVisible)
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshAll(LIVE_NEEDS[page] || null)
+    }, interval)
 
     let removeResume = () => {}
     ;(async () => {
@@ -325,11 +353,11 @@ function App() {
     })()
 
     return () => {
-      document.removeEventListener('visibilitychange', refreshIfVisible)
+      document.removeEventListener('visibilitychange', onVisible)
       clearInterval(poll)
       removeResume()
     }
-  }, [session, refreshAll, page])
+  }, [session, refreshAll, page, LIVE_NEEDS])
 
   // Opening a data-backed screen always shows fresh data.
   useEffect(() => {
