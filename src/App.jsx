@@ -520,11 +520,25 @@ function App() {
     setOtpSending(true)
     try {
       if (useFirebaseLogin) {
-        // Firebase sends the real SMS; auto-verification may sign us in outright.
-        const result = await sendFirebaseOtp(`+91${digits}`)
+        // Firebase sends the real SMS. Android may verify the number by itself,
+        // either before the code screen appears or moments after — the callback
+        // covers the second case, which otherwise left the user typing a code
+        // that had already been consumed.
+        const signInWith = async (idToken) => {
+          try {
+            const { token, user } = await api.authFirebase(idToken, authRole)
+            applySession(token, user)
+          } catch (error) {
+            showToast(error.message)
+          }
+        }
+        const result = await sendFirebaseOtp(`+91${digits}`, (idToken) => {
+          if (sessionRef.current) return // already signed in by the manual path
+          showToast('Number verified automatically')
+          signInWith(idToken)
+        })
         if (result.autoIdToken) {
-          const { token, user } = await api.authFirebase(result.autoIdToken, authRole)
-          applySession(token, user)
+          await signInWith(result.autoIdToken)
           return
         }
         firebaseVerification.current = result.verificationId
@@ -552,7 +566,7 @@ function App() {
     }
     try {
       if (useFirebaseLogin) {
-        const idToken = await confirmFirebaseOtp(firebaseVerification.current, otp)
+        const idToken = await confirmFirebaseOtp(firebaseVerification.current, otp, `+91${phone.replace(/\D/g, '')}`)
         const { token, user } = await api.authFirebase(idToken, authRole)
         firebaseVerification.current = null
         applySession(token, user)
@@ -567,7 +581,9 @@ function App() {
       if (error instanceof ApiError) {
         // The code was fine — Firebase accepted it and we got as far as our own
         // server, which then refused or could not be reached.
-        showToast(error.status === 0 ? error.message : `Sign-in failed: ${error.message}`)
+        if (error.status === 429) showToast('Too many sign-in attempts. Please wait a few minutes and try again.')
+        else if (error.status === 0) showToast(error.message)
+        else showToast(`Sign-in failed: ${error.message}`)
       } else {
         showToast(firebaseErrorMessage(error))
       }
