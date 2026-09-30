@@ -2,6 +2,15 @@
 
 A responsive, mobile-first recreation of the supplied **Milky Mart 3.0.0** Android APK. The interface uses the visual assets and product imagery recovered from the APK, while all customer, rider, cart, checkout, wallet, order, profile and notification interactions run locally with demo data.
 
+## Download & links
+
+- **Android app (latest APK):** https://github.com/VijayabaskarR-06/milkymart-backend/releases/latest/download/MilkyMart.apk
+- **All app releases:** https://github.com/VijayabaskarR-06/milkymart-backend/releases
+- **API:** https://milkymart-daily-api.onrender.com
+- **Admin panel:** https://milkymart-daily-api.onrender.com/admin/
+- **App code:** https://github.com/VijayabaskarR-06/milkymart-app
+- **Backend code:** https://github.com/VijayabaskarR-06/milkymart-backend
+
 ## Included flows
 
 - Customer and delivery-partner role selection
