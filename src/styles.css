@@ -34,7 +34,8 @@ html { scroll-behavior: smooth; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 20% 10%, #ffffff 0, #edf7fa 32%, #dbeef4 100%); }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: hidden; touch-action: manipulation; }
+body { margin: 0; overflow-x: hidden; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 20% 10%, #ffffff 0, #edf7fa 32%, #dbeef4 100%); }
 button, input, textarea { font: inherit; }
 button { color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -581,7 +582,7 @@ img { max-width: 100%; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .modal-head h2 { margin: 0; font-size: 18px; }
 .modal-head button { width: 35px; height: 35px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
-.modal-input { width: 100%; height: 50px; margin-bottom: 15px; padding: 0 13px; border: 1px solid #d8e4ea; border-radius: 13px; outline: 0; background: #f9fbfc; }
+.modal-input { width: 100%; font-size: 16px; height: 50px; margin-bottom: 15px; padding: 0 13px; border: 1px solid #d8e4ea; border-radius: 13px; outline: 0; background: #f9fbfc; }
 .modal-input:focus { border-color: var(--primary); }
 .modal-input:disabled { color: #84919a; }
 .modal-card .primary-button { width: 100%; margin-top: 7px; }
@@ -679,3 +680,10 @@ img { max-width: 100%; }
 .cash-pending { border-left-color: #e0a244; }
 .cash-approved { border-left-color: #17794a; }
 .cash-rejected { border-left-color: #c0392b; }
+
+.cash-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; padding: 4px; border-radius: 12px; background: var(--primary-soft); }
+.cash-mode button { height: 36px; border: 0; border-radius: 9px; background: transparent; color: var(--primary-dark); font-size: 11px; font-weight: 800; }
+.cash-mode button.active { background: #fff; box-shadow: 0 2px 8px rgba(17, 72, 99, .12); }
+.cash-badge { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 6px; background: #fdecea; color: #c0392b; font-size: 8px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.cash-customer.low-fund { border-color: #f0b7b0; }
+.cash-error { margin: 9px 2px 0; padding: 9px 11px; border-radius: 10px; background: #fdecea; color: #c0392b; font-size: 11px; font-weight: 700; }

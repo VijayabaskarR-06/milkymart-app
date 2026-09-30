@@ -196,6 +196,7 @@ function App() {
   // to reach the rider without them reopening the tab.
   const [riderCustomers, setRiderCustomers] = useState([])
   const [cashHistory, setCashHistory] = useState([])
+  const [chargeHistory, setChargeHistory] = useState([])
   // Which path the customer took out of the cart: a one-off order or a plan.
   const [checkoutMode, setCheckoutMode] = useState('once')
   const [toast, setToast] = useState(null)
@@ -303,6 +304,7 @@ function App() {
       ['wallet', wants('wallet') && api.wallet, (v) => { setBalance(v.balance); setLedger(v.transactions) }],
       ['riderCustomers', wants('riderCustomers') && api.riderCustomers, setRiderCustomers],
       ['cash', wants('cash') && api.riderCashCollections, setCashHistory],
+      ['charges', wants('cash') && api.riderDeliveryCharges, setChargeHistory],
     ].filter(([, fn]) => fn)
     const settled = await Promise.allSettled(jobs.map(([, fn]) => fn()))
     settled.forEach((result, i) => {
@@ -825,6 +827,7 @@ function App() {
           approved={riderApproved}
           riderCustomers={riderCustomers}
           cashHistory={cashHistory}
+          chargeHistory={chargeHistory}
           onCashRecorded={refreshAll}
         />
       )}
@@ -2037,55 +2040,72 @@ function InfoScreen({ type, onBack }) {
   )
 }
 
-function RiderCashScreen({ onMenu, setToast, customers = [], history = [], onRecorded }) {
+function RiderCashScreen({ onMenu, setToast, customers = [], history = [], charges = [], onRecorded }) {
   const [picked, setPicked] = useState(null)
+  const [mode, setMode] = useState('deduct')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+
+  const shown = customers.filter((c) => {
+    const q = search.trim().toLowerCase()
+    return !q || (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q)
+  })
 
   const submit = async () => {
     const value = Number(amount)
-    if (!Number.isFinite(value) || value <= 0) { setToast('Enter the amount you collected'); return }
-    if (value > MAX_TOPUP) { setToast(`Maximum is ${money(MAX_TOPUP)} per collection`); return }
+    setError('')
+    if (!Number.isFinite(value) || value <= 0) { setError('Enter the amount'); return }
+    if (value > MAX_TOPUP) { setError(`Maximum is ${money(MAX_TOPUP)} per entry`); return }
+    if (mode === 'deduct' && value > picked.wallet) { setError(`Insufficient fund — wallet has only ${money(picked.wallet)}`); return }
     setSaving(true)
     try {
-      // A fresh key per submission: a double-tap collapses into one claim
-      // rather than crediting the customer twice.
-      await api.recordCash({
+      // A fresh key per submission: a double-tap collapses into one entry.
+      const payload = {
         customerId: picked.id,
         amount: value,
         note: note.trim() || undefined,
         idempotencyKey: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `cash-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-      })
+      }
+      if (mode === 'deduct') await api.chargeDelivery(payload)
+      else await api.recordCash(payload)
       setPicked(null); setAmount(''); setNote('')
-      setToast('Sent to admin for approval')
+      setToast(mode === 'deduct' ? `${money(value)} deducted from wallet` : 'Sent to admin for approval')
       onRecorded?.()
-    } catch (error) {
-      setToast(error.message)
+    } catch (err) {
+      setError(err.message)
+      if (err.status === 402) onRecorded?.()
     } finally {
       setSaving(false)
     }
   }
 
+  const open = (customer) => { setPicked(customer); setMode('deduct'); setAmount(''); setNote(''); setError('') }
+  const when = (value) => new Date(value).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })
+
   return (
     <div className="screen cash-screen">
-      <AppHeader onMenu={onMenu} title="Cash collected" subtitle="Record money taken at the door" />
+      <AppHeader onMenu={onMenu} title="Cash collected" subtitle="Deduct for delivery or record cash" />
       <p className="cash-intro">
-        <Info size={15} /> Recording a payment does not add it to the customer’s wallet. An admin checks it first,
-        and the balance updates the moment it is approved.
+        <Info size={15} /> You can serve any customer. Deducting takes the amount from their wallet straight away
+        (only if the balance covers it). Cash received is checked by an admin before the wallet is topped up.
       </p>
 
-      <div className="section-heading"><div><span>YOUR CUSTOMERS</span><h2>Record a payment</h2></div></div>
+      <div className="section-heading"><div><span>ALL CUSTOMERS</span><h2>Pick a customer</h2></div></div>
+      <input className="modal-input" placeholder="Search name or phone" value={search} onChange={(event) => setSearch(event.target.value)} />
       {!customers.length ? (
-        <EmptyState image="/assets/images/coustmer1.png" title="No customers yet" text="Customers assigned to you will appear here." />
+        <EmptyState image="/assets/images/coustmer1.png" title="No customers yet" text="Registered customers will appear here." />
       ) : (
         <div className="cash-customers">
-          {customers.map((customer) => (
-            <button key={customer.id} className="cash-customer" onClick={() => { setPicked(customer); setAmount(''); setNote('') }}>
+          {shown.map((customer) => (
+            <button key={customer.id} className={`cash-customer${customer.lowFund ? ' low-fund' : ''}`} onClick={() => open(customer)}>
               <span className="cash-avatar">{(customer.name || '?').slice(0, 1).toUpperCase()}</span>
               <div>
-                <strong>{customer.name}</strong>
+                <strong>{customer.name || customer.phone}{customer.lowFund && <span className="cash-badge">Low fund</span>}</strong>
                 <small>{customer.phone} • wallet {money(customer.wallet)}</small>
+                {customer.lastRider && <small>Last delivery by {customer.lastRider}</small>}
               </div>
               <ChevronRight size={18} />
             </button>
@@ -2093,15 +2113,33 @@ function RiderCashScreen({ onMenu, setToast, customers = [], history = [], onRec
         </div>
       )}
 
+      {charges.length > 0 && (
+        <>
+          <div className="section-heading"><div><span>DEDUCTED</span><h2>Your deliveries</h2></div></div>
+          <div className="cash-history">
+            {charges.map((entry) => (
+              <article key={`c${entry.id}`} className="cash-entry cash-approved">
+                <div>
+                  <strong>{entry.customer}</strong>
+                  <small>{when(entry.createdAt)} • by {entry.rider}</small>
+                  {entry.note && <small className="cash-note">{entry.note}</small>}
+                </div>
+                <div className="cash-right"><b>-{money(entry.amount)}</b><span>Deducted</span></div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+
       {history.length > 0 && (
         <>
-          <div className="section-heading"><div><span>SUBMITTED</span><h2>Your recent entries</h2></div></div>
+          <div className="section-heading"><div><span>SUBMITTED</span><h2>Cash received</h2></div></div>
           <div className="cash-history">
             {history.map((entry) => (
               <article key={entry.id} className={`cash-entry cash-${entry.status}`}>
                 <div>
                   <strong>{entry.customer}</strong>
-                  <small>{new Date(entry.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}</small>
+                  <small>{when(entry.createdAt)}</small>
                   {entry.note && <small className="cash-note">{entry.note}</small>}
                 </div>
                 <div className="cash-right">
@@ -2115,20 +2153,26 @@ function RiderCashScreen({ onMenu, setToast, customers = [], history = [], onRec
       )}
 
       {picked && (
-        <Modal close={() => setPicked(null)} title={`Cash from ${picked.name}`}>
-          <label className="modal-label">Amount collected</label>
+        <Modal close={() => setPicked(null)} title={picked.name || picked.phone}>
+          <div className="cash-mode">
+            <button className={mode === 'deduct' ? 'active' : ''} onClick={() => { setMode('deduct'); setError('') }}>Deduct for delivery</button>
+            <button className={mode === 'cash' ? 'active' : ''} onClick={() => { setMode('cash'); setError('') }}>Cash received</button>
+          </div>
+          <p className="payment-note">Wallet balance: <b>{money(picked.wallet)}</b>{picked.lowFund && <span className="cash-badge">Low fund</span>}</p>
+          <label className="modal-label">{mode === 'deduct' ? 'Amount to deduct' : 'Amount collected'}</label>
           <div className="money-input">
             <span>₹</span>
-            <input inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value.replace(/\D/g, ''))} autoFocus />
+            <input inputMode="numeric" value={amount} onChange={(event) => { setAmount(event.target.value.replace(/\D/g, '')); setError('') }} />
           </div>
           <div className="quick-amounts">{[200, 500, 1000].map((value) => (
-            <button key={value} onClick={() => setAmount(String(value))}>+ {money(value)}</button>
+            <button key={value} onClick={() => setAmount(String(value))}>{money(value)}</button>
           ))}</div>
           <label className="modal-label">Note (optional)</label>
-          <input className="modal-input" placeholder="e.g. Cash taken at the door, Flat 4B" value={note} maxLength={140} onChange={(event) => setNote(event.target.value)} />
-          <p className="payment-note"><Info size={14} /> Sent to admin for approval. {picked.name}’s wallet updates only after it is approved.</p>
+          <input className="modal-input" placeholder="e.g. 2 × Milk 500ml, Flat 4B" value={note} maxLength={140} onChange={(event) => setNote(event.target.value)} />
+          {error && <p className="cash-error">{error}</p>}
+          <p className="payment-note"><Info size={14} /> {mode === 'deduct' ? 'Deducted immediately and recorded against your name.' : `Sent to admin for approval. ${picked.name || 'The customer'}’s wallet updates only after it is approved.`}</p>
           <button className="primary-button" onClick={submit} disabled={saving}>
-            {saving ? 'Sending…' : 'Send for approval'} <ChevronRight size={19} />
+            {saving ? 'Sending…' : mode === 'deduct' ? 'Deduct from wallet' : 'Send for approval'} <ChevronRight size={19} />
           </button>
         </Modal>
       )}
@@ -2136,7 +2180,7 @@ function RiderCashScreen({ onMenu, setToast, customers = [], history = [], onRec
   )
 }
 
-function RiderApp({ page, navigate, drawerOpen, setDrawerOpen, deliveries, advanceDelivery, logout, resetDemo, setToast, phone, name, saveName, balance, topupWallet, ledger, approved, riderCustomers, cashHistory, onCashRecorded }) {
+function RiderApp({ page, navigate, drawerOpen, setDrawerOpen, deliveries, advanceDelivery, logout, resetDemo, setToast, phone, name, saveName, balance, topupWallet, ledger, approved, riderCustomers, cashHistory, chargeHistory, onCashRecorded }) {
   const primaryPages = ['home', 'deliveries', 'cash', 'wallet', 'profile']
 
   const onAdvance = async (id) => {
@@ -2164,7 +2208,7 @@ function RiderApp({ page, navigate, drawerOpen, setDrawerOpen, deliveries, advan
           ? <RiderDeliveries deliveries={deliveries} onMenu={() => setDrawerOpen(true)} advanceDelivery={onAdvance} setToast={setToast} />
           : <RiderPending onMenu={() => setDrawerOpen(true)} name={name} />)}
         {page === 'cash' && (approved
-          ? <RiderCashScreen onMenu={() => setDrawerOpen(true)} setToast={setToast} customers={riderCustomers} history={cashHistory} onRecorded={onCashRecorded} />
+          ? <RiderCashScreen onMenu={() => setDrawerOpen(true)} setToast={setToast} customers={riderCustomers} history={cashHistory} charges={chargeHistory} onRecorded={onCashRecorded} />
           : <RiderPending onMenu={() => setDrawerOpen(true)} name={name} />)}
         {page === 'wallet' && <WalletScreen onMenu={() => setDrawerOpen(true)} setToast={setToast} balance={balance} topupWallet={topupWallet} ledger={ledger} rider />}
         {page === 'profile' && <ProfileScreen onMenu={() => setDrawerOpen(true)} phone={phone} logout={logout} resetDemo={resetDemo} setToast={setToast} name={name} saveName={saveName} approved={approved} rider />}

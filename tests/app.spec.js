@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 // End-to-end tests against the live backend (Express + Postgres). The demo
 // database is reset before each test via the admin API, so tests are order-
 // independent. Requires the backend running on :4000 (see milkymart-backend).
-const API = 'http://localhost:4000'
+const API = process.env.TEST_API_URL || 'http://localhost:4000'
 
 test.beforeEach(async ({ request }) => {
   const res = await request.post(`${API}/api/admin/login`, {
@@ -244,6 +244,44 @@ test.describe('rider', () => {
     await page.locator('.filter-pills button').nth(3).click() // All
     const href = await page.locator('.customer-line a').first().getAttribute('href')
     expect(href).not.toMatch(/\s/)
+  })
+
+  test('cash screen lists every customer, flags low fund and refuses an overdraw', async ({ page, request }) => {
+    const token = await adminToken(request)
+    const customers = (await (await request.get(`${API}/api/admin/customers`, { headers: { Authorization: `Bearer ${token}` } })).json())
+    // A brand-new customer has an empty wallet, so must show as low fund.
+    await request.post(`${API}/api/auth/verify-otp`, { data: { phone: '9111222333', otp: '111111', role: 'customer' } })
+    await login(page, 'rider')
+    await nav(page, 'Cash').click()
+    await page.waitForSelector('.cash-customer')
+    expect(await page.locator('.cash-customer').count()).toBeGreaterThanOrEqual(customers.length + 1)
+
+    // The page must not scroll sideways or be zoomable.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    expect(await page.locator('meta[name=viewport]').getAttribute('content')).toContain('user-scalable=no')
+
+    const low = page.locator('.cash-customer.low-fund').first()
+    await expect(low.locator('.cash-badge')).toHaveText(/low fund/i)
+    await low.click()
+    await page.locator('.money-input input').fill('500')
+    await page.locator('.modal-card .primary-button').click()
+    await expect(page.locator('.cash-error')).toContainText('Insufficient fund')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const box = await page.locator('.modal-card').boundingBox()
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width)
+  })
+
+  test('a rider can deduct from a customer they are not assigned to', async ({ page }) => {
+    await login(page, 'rider')
+    await nav(page, 'Cash').click()
+    await page.waitForSelector('.cash-customer')
+    const rich = page.locator('.cash-customer:not(.low-fund)').first()
+    await rich.click()
+    await page.locator('.money-input input').fill('10')
+    await page.locator('.modal-card .primary-button').click()
+    await expect(page.locator('.cash-history .cash-entry').first()).toContainText('-₹10')
+    await expect(page.locator('.cash-history .cash-entry').first()).toContainText('by ')
   })
 
   test('an unapproved rider sees an approval-pending screen', async ({ page }) => {

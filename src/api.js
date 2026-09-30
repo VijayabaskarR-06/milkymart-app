@@ -152,5 +152,7 @@ export const api = {
   // an admin has to approve it before the customer's wallet changes.
   riderCustomers: () => request('/rider/customers'),
   riderCashCollections: () => request('/rider/cash-collections'),
+  riderDeliveryCharges: () => request('/rider/delivery-charges'),
+  chargeDelivery: (payload) => request('/rider/delivery-charges', { method: 'POST', body: payload }),
   recordCash: (payload) => request('/rider/cash-collections', { method: 'POST', body: payload }),
 }
